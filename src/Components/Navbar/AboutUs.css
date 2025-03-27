@@ -1,0 +1,172 @@
+/* Navigation Bar */
+nav {
+    width: 100%;
+    background: #D3B683;
+    padding: 10px 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.logo {
+    margin-left: 20px;
+    width: 150px;
+    border-radius: 50px;
+}
+
+/* Fix text indentation */
+p {
+    font-size: 18px;
+    text-indent: 0;
+    line-height: 1.6;
+    padding-left: 16px;
+}
+
+/* Navigation List */
+nav ul {
+    margin-right: 20px;
+}
+
+nav ul li {
+    display: inline;
+    list-style: none;
+    margin: 10px 20px;
+    font-size: 20px;
+    font-weight: 500;
+}
+
+/* Button Styling */
+.btn {
+    background: #8e6114;
+    color: white;
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 25px;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    transition: 0.3s;
+}
+
+.btn:hover {
+    background: #5e3f0a;
+}
+
+/* About Us Container */
+.about-us-container {
+    margin-top: 6rem;
+    background-image: url('../../assets/bb.png'); /* Update with the correct path */
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    background-color: #f7fafc;
+    color: #2d3748;
+    padding: 2rem;
+    max-width: 1200px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* About Us Header */
+.about-us-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+}
+
+.about-us-title {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #5e3f0a; /* Updated color */
+}
+
+.about-us-subtitle {
+    font-size: 1.2rem;
+    margin-top: 0.5rem;
+    color: #4a5568;
+}
+
+/* About Us Section */
+.about-us-section {
+    background-color: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1.5rem;
+    word-wrap: break-word;
+}
+
+.about-us-section-title {
+    font-size: 2rem;
+    font-weight: 600;
+    color: #5e3f0a; /* Updated color */
+}
+
+/* Text and List */
+.about-us-section p,
+.about-us-section ul {
+    margin-top: 16px;
+    color: #374151;
+    padding-left: 16px;
+}
+
+.about-us-list {
+    list-style-type: disc;
+    margin-left: 20px;
+    margin-top: 1rem;
+    color: #4a5568;
+}
+
+/* Call to Action */
+.about-us-cta {
+    text-align: center;
+    margin-top: 2.5rem;
+}
+
+.about-us-cta-title {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #5e3f0a; /* Updated color */
+}
+
+.about-us-cta-text {
+    margin-top: 1rem;
+    font-size: 1.2rem;
+    color: #4a5568;
+}
+
+/* Call to Action Button */
+.about-us-button {
+    margin-top: 1.5rem;
+    background-color: #5e3f0a;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 1.2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: background-color 0.3s ease;
+    border: none;
+    cursor: pointer;
+}
+
+.about-us-button:hover {
+    background-color: #8e6114;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .about-us-title {
+        font-size: 2rem;
+    }
+    .about-us-section {
+        padding: 1.5rem;
+    }
+    nav ul li {
+        font-size: 18px;
+        margin: 5px 10px;
+    }
+}

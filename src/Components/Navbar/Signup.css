@@ -1,0 +1,88 @@
+nav{
+  width: 100%;
+  background: #D3B683;
+  padding: 4px 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 10;
+}
+.logo{
+  margin-left: 10px;
+  width: 150px;
+  border-radius: 50px;
+  
+}
+nav ul li{
+  display: inline;
+  list-style: none;
+  margin:5px 20px;
+  font-size: 25px;
+  font-weight: 500;
+}
+.container{
+  padding-left: 0;
+  padding-right: 0%;
+}
+.btn{
+  background:#8e6114;
+  color: white;
+  padding: 14px 25px;
+  font-size: 17px;
+  border-radius: 30px;
+  cursor: pointer;
+  border: 0;
+  outline: 0;
+  
+}
+.signup-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: url('../../assets/siiiiii.jpg') no-repeat center center/cover;
+  }
+  
+  .signup-form {
+    background: #D3B683;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    width: 350px;
+    text-align: center;
+  }
+  
+  .signup-form h2 {
+    margin-bottom: 30px;
+  }
+  
+  .signup-form input,
+  .signup-form select,
+  .signup-form button {
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 10px;
+    border: 1px solid #6c6a6a;
+    border-radius: 5px;
+  }
+  
+  .signup-form button {
+    background: #7f6031;
+    color: white;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+  }
+  
+  .signup-form button:hover {
+    background: #7f6031;
+  }
+  
+  .message {
+    color: red;
+    margin-bottom: 10px;
+  }
+  
