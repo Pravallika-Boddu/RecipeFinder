@@ -17,7 +17,7 @@ const Login = () => {
 const handleSubmit = async (e) => {
   e.preventDefault();
   try {
-    const response = await axios.post("http://localhost:5000/api/auth/login", formData, { withCredentials: true });
+    const response = await axios.post("https://recipe-finder-0epm.onrender.com/api/auth/login", formData, { withCredentials: true });
     setMessage(response.data.message);
 
     if (response.data.success) {

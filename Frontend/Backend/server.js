@@ -9,9 +9,20 @@ const path = require('path');
 const app = express();
 const fetch = require('./routes/fetch');
 // Enable CORS for all routes
+const allowedOrigins = [
+  'http://localhost:5173',
+  'https://recipe-finder-0epm.onrender.com'
+];
+
 app.use(cors({
-  origin: 'http://localhost:5173', // Allow requests from this origin
-  credentials: true, // Allow cookies and credentials
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
 const MONGODB_URI = process.env.MONGODB_URI;
 mongoose

@@ -35,12 +35,12 @@ const ViewProfile = ({ onClose = () => {} }) => {
           throw new Error('User ID is missing. Please log in again.');
         }
 
-        const response = await axios.get(`http://localhost:5000/api/auth/${userId}`);
+        const response = await axios.get(`https://recipe-finder-0epm.onrender.com/api/auth/${userId}`);
         const userData = response.data;
 
         // Ensure the profilePicture URL is complete
         if (userData.profilePicture) {
-          userData.profilePicture = `http://localhost:5000${userData.profilePicture}`;
+          userData.profilePicture = `https://recipe-finder-0epm.onrender.com${userData.profilePicture}`;
         }
 
         setUser(userData);

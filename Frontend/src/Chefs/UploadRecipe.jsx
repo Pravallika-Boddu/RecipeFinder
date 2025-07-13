@@ -62,7 +62,7 @@ const UploadRecipe = () => {
     };
 
     try {
-      const response = await fetch('http://localhost:5000/api/recipes/upload', {
+      const response = await fetch('https://recipe-finder-0epm.onrender.com/api/recipes/upload', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

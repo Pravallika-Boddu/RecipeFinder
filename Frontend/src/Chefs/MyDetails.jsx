@@ -29,7 +29,7 @@ const MyDetails = () => {
           return;
         }
 
-        const response = await fetch(`http://localhost:5000/api/fetch/user/${userId}/recipe/${recipeId}`);
+        const response = await fetch(`https://recipe-finder-0epm.onrender.com/api/fetch/user/${userId}/recipe/${recipeId}`);
         if (response.ok) {
           const data = await response.json();
           setRecipe(data);

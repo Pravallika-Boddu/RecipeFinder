@@ -47,7 +47,7 @@ const Signup = () => {
       }
 
       setLoading(true);
-      const response = await axios.post("http://localhost:5000/api/auth/send-otp", {
+      const response = await axios.post("https://recipe-finder-0epm.onrender.com/api/auth/send-otp", {
         email: formData.email
       });
 

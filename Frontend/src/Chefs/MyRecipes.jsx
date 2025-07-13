@@ -18,7 +18,7 @@ const MyRecipes = () => {
           return;
         }
 
-        const response = await fetch(`http://localhost:5000/api/fetch/user/${userId}`);
+        const response = await fetch(`https://recipe-finder-0epm.onrender.com/api/fetch/user/${userId}`);
         console.log('Response status:', response.status);
 
         if (response.ok) {
