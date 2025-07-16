@@ -16,7 +16,7 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // CORS Configuration
 const allowedOrigins = [
-  'https://recipe-finder-seven-liart.vercel.app', // Your Vercel frontend
+  'https://recipe-finder-delta-five.vercel.app/', // Your Vercel frontend
   'http://localhost:5173' // Local development
 ];
 
