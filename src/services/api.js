@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const API_KEY = import.meta.env.VITE_SPOONACULAR_API_KEY;
 const SPOONACULAR_API = 'https://api.spoonacular.com';
-const SERVER_API = 'http://localhost:5000/api';
+const SERVER_API = 'https://recipefinder-99mo.onrender.com/api';
 
 // Spoonacular API calls
 export const fetchRandomRecipes = async (number = 10, options = {}) => {

@@ -22,7 +22,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post("http://localhost:5000/api/auth/login", formData, { withCredentials: true });
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/login", formData, { withCredentials: true });
       setMessage(response.data.message);
 
       if (response.data.success) {
@@ -53,7 +53,7 @@ const Login = () => {
         return;
       }
 
-      const response = await axios.post("http://localhost:5000/api/auth/mail/send-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/mail/send-otp", {
         email: resetData.email,
         purpose: "reset-password"
       });
@@ -74,7 +74,7 @@ const Login = () => {
         return;
       }
 
-      const response = await axios.post("http://localhost:5000/api/auth/mail/verify-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/mail/verify-otp", {
         email: resetData.email,
         otp,
         newPassword: resetData.newPassword,

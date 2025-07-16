@@ -34,13 +34,13 @@ const ViewProfile = ({ onClose = () => {} }) => {
           throw new Error('User ID is missing. Please log in again.');
         }
 
-        const response = await axios.get(`http://localhost:5000/api/auth/${userId}`);
+        const response = await axios.get(`https://recipefinder-99mo.onrender.com/api/auth/${userId}`);
         const userData = response.data;
 
         // Handle profile picture URL
         let profilePicUrl = userData.profilePicture || '';
         if (profilePicUrl && !profilePicUrl.startsWith('http')) {
-          profilePicUrl = `http://localhost:5000${profilePicUrl}`;
+          profilePicUrl = `https://recipefinder-99mo.onrender.com${profilePicUrl}`;
         }
 
         setUser(userData);
@@ -112,7 +112,7 @@ const ViewProfile = ({ onClose = () => {} }) => {
       }
 
       const response = await axios.put(
-        `http://localhost:5000/api/auth/${userId}`,
+        `https://recipefinder-99mo.onrender.com/api/auth/${userId}`,
         formDataToSend,
         {
           headers: {
@@ -125,7 +125,7 @@ const ViewProfile = ({ onClose = () => {} }) => {
       const updatedUser = response.data;
       let updatedProfilePic = updatedUser.profilePicture || '';
       if (updatedProfilePic && !updatedProfilePic.startsWith('http')) {
-        updatedProfilePic = `http://localhost:5000${updatedProfilePic}`;
+        updatedProfilePic = `https://recipefinder-99mo.onrender.com${updatedProfilePic}`;
       }
 
       setUser(updatedUser);
@@ -157,7 +157,7 @@ const ViewProfile = ({ onClose = () => {} }) => {
 
   const handleSendOTP = async () => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/mail/send-otp', {
+      const response = await axios.post('https://recipefinder-99mo.onrender.com/api/auth/mail/send-otp', {
         email: formData.email,
       });
       if (response.data.success) {
@@ -179,7 +179,7 @@ const ViewProfile = ({ onClose = () => {} }) => {
     }
 
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/mail/verify-otp', {
+      const response = await axios.post('https://recipefinder-99mo.onrender.com/api/auth/mail/verify-otp', {
         email: formData.email,
         otp,
         newPassword,

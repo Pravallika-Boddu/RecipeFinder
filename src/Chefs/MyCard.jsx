@@ -4,7 +4,7 @@ import { Clock, Users } from 'lucide-react';
 const MyCard = ({ recipe }) => {
   const imageUrl = recipe.image.startsWith('data:image') 
     ? recipe.image 
-    : `http://localhost:5000/uploads/${recipe.image}`;
+    : `https://recipefinder-99mo.onrender.com/uploads/${recipe.image}`;
 
   return (
     <div style={styles.card}>

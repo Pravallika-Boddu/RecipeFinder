@@ -47,7 +47,7 @@ const Signup = () => {
       }
 
       setLoading(true);
-      const response = await axios.post("http://localhost:5000/api/auth/send-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/send-otp", {
         email: formData.email
       });
 
@@ -68,7 +68,7 @@ const Signup = () => {
 
   try {
     setLoading(true);
-    const response = await axios.post("http://localhost:5000/api/auth/verify-otp", {
+    const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/verify-otp", {
       username: formData.username,
       email: formData.email,
       mobileNumber: formData.mobileNumber,
@@ -105,7 +105,7 @@ const Signup = () => {
   const handleResendOTP = async () => {
     try {
       setLoading(true);
-      const response = await axios.post("http://localhost:5000/api/auth/send-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/send-otp", {
         email: formData.email
       });
 
