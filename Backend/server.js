@@ -9,50 +9,62 @@ const path = require('path');
 // Initialize Express
 const app = express();
 
-// Security Middleware
+// =====================
+// SECURITY MIDDLEWARE
+// =====================
 app.use(helmet());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// CORS Configuration
+// =====================
+// CORS CONFIGURATION (FIXED)
+// =====================
 const allowedOrigins = [
-  'https://recipe-finder-delta-five.vercel.app/', // Your Vercel frontend
-  'http://localhost:5173' // Local development
+  'https://recipe-finder-delta-five.vercel.app', // Removed trailing slash
+  'http://localhost:5173'
 ];
 
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = `CORS policy: ${origin} not allowed`;
-      return callback(new Error(msg), false);
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS blocked: ${origin}`));
     }
-    return callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200
+};
 
-// Handle preflight requests
-app.options('*', cors());
+// Apply CORS middleware
+app.use(cors(corsOptions));
 
-// Rate limiting
+// Explicit preflight handler
+app.options('*', cors(corsOptions)); // Must use same options
+
+// =====================
+// RATE LIMITING
+// =====================
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests from this IP'
 });
 app.use('/api/', limiter);
 
-// Database Connection
+// =====================
+// DATABASE CONNECTION
+// =====================
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/recipefinder';
 
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000
+  serverSelectionTimeoutMS: 10000, // Increased timeout
+  socketTimeoutMS: 60000,
+  maxPoolSize: 10
 })
 .then(() => console.log('✅ MongoDB connected successfully'))
 .catch(err => {
@@ -61,19 +73,13 @@ mongoose.connect(MONGODB_URI, {
 });
 
 // DB Event Listeners
-mongoose.connection.on('connected', () => {
-  console.log('Mongoose connected to DB');
-});
+mongoose.connection.on('connected', () => console.log('Mongoose connected to DB'));
+mongoose.connection.on('error', err => console.error('Mongoose error:', err));
+mongoose.connection.on('disconnected', () => console.warn('Mongoose disconnected'));
 
-mongoose.connection.on('error', (err) => {
-  console.error('Mongoose connection error:', err);
-});
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('Mongoose disconnected from DB');
-});
-
-// Routes
+// =====================
+// ROUTES
+// =====================
 const routes = [
   require('./routes/recipes'),
   require('./routes/mealPlan'),
@@ -86,51 +92,86 @@ routes.forEach(route => {
   app.use('/api', route);
 });
 
-// Static Files
+// =====================
+// STATIC FILES
+// =====================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Health Check
+// =====================
+// HEALTH CHECK (ENHANCED)
+// =====================
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
-    timestamp: new Date().toISOString(),
-    dbState: mongoose.connection.readyState
+    uptime: process.uptime(),
+    dbStatus: mongoose.connection.readyState,
+    timestamp: new Date().toISOString()
   });
 });
 
-// 404 Handler
-app.use((req, res, next) => {
-  res.status(404).json({ message: 'Route not found' });
+// =====================
+// ERROR HANDLERS
+// =====================
+app.use((req, res) => {
+  res.status(404).json({ 
+    success: false,
+    message: 'Route not found',
+    path: req.originalUrl
+  });
 });
 
-// Error Handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Internal server error' });
+  console.error('⚠️ Server error:', err.stack);
+  
+  // Special handling for CORS errors
+  if (err.message.includes('CORS')) {
+    return res.status(403).json({ 
+      success: false,
+      message: 'Cross-origin request blocked',
+      allowedOrigins
+    });
+  }
+
+  res.status(500).json({ 
+    success: false,
+    message: 'Internal server error'
+  });
 });
 
-// Server Start
+// =====================
+// SERVER START
+// =====================
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🟢 Allowed origins: ${allowedOrigins.join(', ')}`);
 });
 
-// Graceful Shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Shutting down gracefully...');
+// =====================
+// GRACEFUL SHUTDOWN
+// =====================
+const shutdown = () => {
+  console.log('\n🛑 Shutting down gracefully...');
   server.close(() => {
     mongoose.connection.close(false, () => {
-      console.log('Server and DB connections closed');
+      console.log('🔴 All connections closed');
       process.exit(0);
     });
   });
-});
+};
 
-// Debugging: Log registered routes
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// =====================
+// DEBUGGING (Dev only)
+// =====================
 if (process.env.NODE_ENV === 'development') {
-  app._router.stack.forEach((r) => {
-    if (r.route && r.route.path) {
-      console.log(`Registered route: ${r.route.path}`);
-    }
-  });
+  console.log('\n🔍 Registered routes:');
+  app._router.stack
+    .filter(r => r.route)
+    .forEach(r => {
+      const method = Object.keys(r.route.methods)[0].toUpperCase();
+      console.log(`${method.padEnd(6)} ${r.route.path}`);
+    });
 }
