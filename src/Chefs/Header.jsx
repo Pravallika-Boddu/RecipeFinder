@@ -1,8 +1,7 @@
-// Header.js
 import React, { useState } from "react";
 import logo from '../assets/logo.png';
-import { User, Settings, Eye, Languages, HelpCircle, LogOut, Sun, Moon, Type, Plus } from "lucide-react"; // Import icons
-import { useNavigate } from "react-router-dom";
+import { User, Settings, Eye, Languages, HelpCircle, LogOut, Sun, Moon, Type, Plus } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 
 const Header = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -44,7 +43,8 @@ const Header = () => {
   };
 
   const handleLogout = () => {
-    window.location.href = "/signup";
+    // Add your logout logic here (clear tokens, etc.)
+    navigate("/signup");
   };
 
   const handleThemeChange = (selectedTheme) => {
@@ -109,13 +109,14 @@ const Header = () => {
             gap: 20px;
           }
 
-          .header-right a {
+          .header-right a, .header-right .nav-link {
             text-decoration: none;
             color: var(--text-color, #333);
             font-weight: 500;
+            cursor: pointer;
           }
 
-          .header-right a:hover {
+          .header-right a:hover, .header-right .nav-link:hover {
             color: var(--hover-color, #ff6b6b);
           }
 
@@ -180,17 +181,16 @@ const Header = () => {
       </style>
       <header className="header">
         <div className="header-left">
-          <img
-            src={logo}
-            alt="Logo"
-            className="logo"
-          />
+          <Link to="/">
+            <img src={logo} alt="Logo" className="logo" />
+          </Link>
         </div>
         <div className="header-right">
-          <a href="/chef">Home</a>
-          <a href="/explore-recipes">Search</a>
-          <a href="/saved">Saved Recipes</a>
-          <a href="/my-recipes">My Recipes</a>
+          <Link to="/chef" className="nav-link">Home</Link>
+          <Link to="/explore-recipes" className="nav-link">Search</Link>
+          <Link to="/saved" className="nav-link">Saved Recipes</Link>
+          <Link to="/my-recipes" className="nav-link">My Recipes</Link>
+          
           <button
             onClick={handleUploadRecipe}
             style={{
@@ -208,6 +208,7 @@ const Header = () => {
             <Plus size={16} />
             Upload Recipe
           </button>
+
           <div className="profile-icon">
             <button
               onClick={toggleDropdown}
@@ -228,11 +229,13 @@ const Header = () => {
             >
               <User size={20} />
             </button>
+            
             {isDropdownOpen && (
               <div className="dropdown">
                 <div className="dropdown-item" onClick={toggleSettings}>
                   <Settings size={16} /> Settings
                 </div>
+                
                 {isSettingsOpen && (
                   <div className="nested-dropdown">
                     <div className="dropdown-item" onClick={toggleThemes}>
@@ -275,9 +278,11 @@ const Header = () => {
                     </div>
                   </div>
                 )}
-                <a href="/edit-profile" className="dropdown-item">
+                
+                <Link to="/edit-profile" className="dropdown-item">
                   <Eye size={16} /> View Profile
-                </a>
+                </Link>
+                
                 <div className="dropdown-item" onClick={toggleLanguages}>
                   <Languages size={16} /> Languages
                 </div>
@@ -294,9 +299,11 @@ const Header = () => {
                     </div>
                   </div>
                 )}
-                <a href="/helppp" className="dropdown-item">
+                
+                <Link to="/helppp" className="dropdown-item">
                   <HelpCircle size={16} /> Help
-                </a>
+                </Link>
+                
                 <div className="dropdown-item" onClick={handleLogout}>
                   <LogOut size={16} /> Logout
                 </div>
@@ -308,5 +315,4 @@ const Header = () => {
     </>
   );
 };
-
 export default Header;

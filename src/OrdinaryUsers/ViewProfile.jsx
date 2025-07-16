@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { User, Edit, Lock, Phone, Globe } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import imageCompression from 'browser-image-compression';
 import Navbar from './Navbarr';
 
 const ViewProfile = ({ onClose = () => {} }) => {
+  const navigate = useNavigate();
   const location = useLocation();
   const defaultUser = {
     username: 'Guest',
@@ -38,7 +39,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
         const response = await axios.get(`https://recipefinder-99mo.onrender.com/api/auth/${userId}`);
         const userData = response.data;
 
-        // Handle profile picture URL
         let profilePicUrl = userData.profilePicture || '';
         if (profilePicUrl && !profilePicUrl.startsWith('http')) {
           profilePicUrl = `https://recipefinder-99mo.onrender.com${profilePicUrl}`;
@@ -55,7 +55,7 @@ const ViewProfile = ({ onClose = () => {} }) => {
     };
 
     fetchUserData();
-  }, [isEditing]); // Refresh when editing state changes
+  }, [isEditing]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -66,7 +66,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
     const file = e.target.files[0];
     if (file) {
       try {
-        // Compress the image
         const options = {
           maxSizeMB: 1,
           maxWidthOrHeight: 800,
@@ -74,7 +73,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
         };
         const compressedFile = await imageCompression(file, options);
 
-        // Convert to base64 for preview
         const reader = new FileReader();
         reader.onloadend = () => {
           setProfilePicture(reader.result);
@@ -94,7 +92,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
         throw new Error('User ID is missing. Please log in again.');
       }
 
-      // Check if role is being changed
       const roleChanged = formData.role !== user.role;
 
       const formDataToSend = new FormData();
@@ -103,7 +100,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
       formDataToSend.append('mobileNumber', formData.mobileNumber);
       formDataToSend.append('role', formData.role);
 
-      // Only append profile picture if it's a new one
       if (profilePicture && profilePicture !== user.profilePicture) {
         if (profilePicture.startsWith('data:')) {
           const blob = await fetch(profilePicture).then(res => res.blob());
@@ -123,7 +119,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
         }
       );
 
-      // Update local state with the response data
       const updatedUser = response.data;
       let updatedProfilePic = updatedUser.profilePicture || '';
       if (updatedProfilePic && !updatedProfilePic.startsWith('http')) {
@@ -136,23 +131,21 @@ const ViewProfile = ({ onClose = () => {} }) => {
       setIsEditing(false);
       setError('');
 
-      // If role was changed, force logout
       if (roleChanged) {
         alert('Your role has been changed. Please login again to continue.');
         localStorage.removeItem('userId');
         localStorage.removeItem('token');
-        window.location.href = '/login'; // Full page reload to clear state
+        navigate('/login');
       }
 
     } catch (error) {
       console.error('Error updating profile:', error);
       setError(error.response?.data?.error || 'Failed to update profile. Please try again.');
       
-      // If unauthorized (due to role change), force logout
       if (error.response?.status === 401) {
         localStorage.removeItem('userId');
         localStorage.removeItem('token');
-        window.location.href = '/login';
+        navigate('/login');
       }
     }
   };
@@ -203,7 +196,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
     <div>
       <Navbar />
       <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
-        {/* Header with Close Button */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '24px', fontWeight: 'bold' }}>Profile</h2>
           <button
@@ -226,7 +218,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
           </div>
         )}
 
-        {/* Profile Picture Section */}
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
           <div style={{ position: 'relative', width: '120px', height: '120px' }}>
             <img
@@ -270,7 +261,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
           </div>
         </div>
 
-        {/* Basic Info Section */}
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>Basic Info</h3>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
@@ -345,7 +335,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
           </div>
         </div>
 
-        {/* Account Info Section */}
         <div style={{ marginBottom: '20px' }}>
           <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>Account Info</h3>
           <div style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
@@ -380,14 +369,13 @@ const ViewProfile = ({ onClose = () => {} }) => {
           </div>
         </div>
 
-        {/* Edit/Save Buttons */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
           {isEditing ? (
             <>
               <button
                 onClick={() => {
                   setIsEditing(false);
-                  setFormData(user); // Reset form data
+                  setFormData(user);
                   setProfilePicture(user.profilePicture || '');
                 }}
                 style={{
@@ -432,7 +420,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
           )}
         </div>
 
-        {/* OTP Popup */}
         {showOTPPopup && (
             <div style={{
               position: 'fixed',
@@ -488,7 +475,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
             </div>
         )}
 
-        {/* Password Change Popup */}
         {showPasswordPopup && (
           <div style={{
             position: 'fixed',
