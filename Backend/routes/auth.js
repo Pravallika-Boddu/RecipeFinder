@@ -1,123 +1,171 @@
 const express = require("express");
 const bcrypt = require("bcrypt");
-const twilio = require("twilio");
+const nodemailer = require("nodemailer");
 const User = require('../models/User');
 const dotenv = require("dotenv");
 dotenv.config();
 const router = express.Router();
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 const multer = require('multer');
 const path = require('path');
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/'); // Save files in the 'uploads' folder
+    cb(null, 'uploads/');
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`); // Unique filename
+    cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
 
 const upload = multer({ storage });
+
+// Create email transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
 router.post("/send-otp", async (req, res) => {
   try {
-    let { mobileNumber } = req.body;
-    console.log("Received mobileNumber:", mobileNumber);
+    const { email } = req.body;
 
-    if (!mobileNumber.startsWith("+")) {
-      return res.status(400).json({ message: "Mobile number must include country code!" });
+    // Validate email format
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({ message: "Invalid email format!" });
     }
 
-    const isValidMobileNumber = /^\+\d{1,15}$/.test(mobileNumber);
-    if (!isValidMobileNumber) {
-      return res.status(400).json({ message: "Invalid mobile number format!" });
+    // Check if verified user already exists
+    const existingVerifiedUser = await User.findOne({ email, verified: true });
+    if (existingVerifiedUser) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Email already registered and verified!" 
+      });
     }
 
-    const existingUser = await User.findOne({ mobileNumber });
-    if (existingUser) {
-      return res.status(400).json({ message: "Mobile number already registered!" });
-    }
-
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log("Generated OTP:", otp);
 
-    await User.findOneAndUpdate(
-      { mobileNumber },
-      { otp, otpExpiry: Date.now() + 10 * 60 * 1000 },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+    // Find or create user - more robust version
+    let user = await User.findOneAndUpdate(
+      { email },
+      {
+        $setOnInsert: {
+          email,
+          verified: false,
+          // Temporary placeholder values
+          username: `temp_${Date.now()}`,
+          mobileNumber: '0000000000',
+          password: 'temporary_password'
+        },
+        $set: {
+          otp,
+          otpExpiry: Date.now() + 10 * 60 * 1000 // 10 minutes
+        }
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true
+      }
     );
 
-    console.log("Sending OTP via Twilio...");
-    await client.messages.create({
-      body: `Your OTP for Recipe Finder is: ${otp}`,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: mobileNumber,
+    console.log("User after OTP generation:", user); // Debug log
+
+    // Send OTP email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Your OTP for Recipe Finder',
+      text: `Your OTP is: ${otp}. It will expire in 10 minutes.`,
+      html: `<p>Your OTP is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ 
+      success: true,
+      message: "OTP sent to email successfully!" 
     });
 
-    res.status(200).json({ message: "OTP sent successfully!" });
   } catch (error) {
     console.error("Error in /send-otp route:", error);
-    res.status(500).json({ message: "Failed to send OTP!" });
+    res.status(500).json({ 
+      success: false,
+      message: "Failed to send OTP!",
+      error: error.message 
+    });
   }
 });
 router.post("/verify-otp", async (req, res) => {
   try {
-    console.log("Request body:", req.body); // Log the request body
     const { username, email, mobileNumber, password, role, otp } = req.body;
 
-    // Ensure all required fields are present
-    if (!username || !email || !mobileNumber || !password || !role || !otp) {
-      return res.status(400).json({ message: "All fields are required!" });
-    }
-
-    // Ensure the mobile number is in E.164 format
-    if (!mobileNumber.startsWith("+")) {
-      mobileNumber = `+91${mobileNumber}`; // Append country code for India
-    }
-
-    // Validate mobile number format
-    const isValidMobileNumber = /^\+\d{1,15}$/.test(mobileNumber);
-    if (!isValidMobileNumber) {
-      return res.status(400).json({ message: "Invalid mobile number format!" });
-    }
-
-    // Find the user by mobile number
-    const user = await User.findOne({ mobileNumber });
+    // First find user by email regardless of verification status
+    const user = await User.findOne({ email });
+    
     if (!user) {
-      console.log("User not found for mobile number:", mobileNumber);
-      return res.status(400).json({ message: "User not registered!" });
+      return res.status(400).json({ 
+        success: false,
+        message: "No user found with this email. Please request a new OTP.",
+        email: email
+      });
     }
 
-    // Check if OTP matches and is not expired
-    if (user.otp !== otp || user.otpExpiry < Date.now()) {
-      console.log("Invalid or expired OTP for mobile number:", mobileNumber);
-      return res.status(400).json({ message: "Invalid or expired OTP!" });
+    // Check if already verified
+    if (user.verified) {
+      return res.status(400).json({ 
+        success: false,
+        message: "This email is already verified. Please login instead.",
+        email: email
+      });
     }
 
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Verify OTP
+    if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid or expired OTP!",
+        serverOtp: user.otp,
+        clientOtp: otp,
+        otpExpiry: user.otpExpiry,
+        currentTime: Date.now()
+      });
+    }
 
-    // Update the user with all details
+    // Update user with final details
     user.username = username;
-    user.email = email;
-    user.password = hashedPassword;
+    user.mobileNumber = mobileNumber;
+    user.password = await bcrypt.hash(password, 10);
     user.role = role;
-    user.otp = undefined; // Clear OTP
-    user.otpExpiry = undefined; // Clear OTP expiry
+    user.verified = true;
+    user.otp = undefined;
+    user.otpExpiry = undefined;
 
-    // Save the updated user to the database
     await user.save();
 
-    console.log("User saved to database:", user); // Log the saved user
-
-    res.status(200).json({ message: "OTP verified and user registered successfully!" });
+    res.status(200).json({ 
+      success: true,
+      message: "Registration successful!",
+      user: {
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
+    });
+    
   } catch (error) {
-    console.error("Error verifying OTP:", error); // Log the full error
-    res.status(500).json({ message: "Failed to verify OTP and register user!" });
+    console.error("Error verifying OTP:", error);
+    res.status(500).json({ 
+      success: false,
+      message: error.code === 11000 
+        ? "Username or mobile number already exists" 
+        : "Registration failed",
+      error: error.message
+    });
   }
 });
 router.post("/login", async (req, res) => {
@@ -162,94 +210,173 @@ const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
 
 // Temporary storage for OTPs (in-memory)
 const otpStore = {};
+router.post("/mail/send-otp", async (req, res) => {
+  const { email, purpose = "password reset" } = req.body;
 
-// OTP for Password Reset
-router.post("/send", async (req, res) => {
-    const { mobileNumber, purpose } = req.body;
-
-    try {
-        const user = await User.findOne({ mobileNumber });
-        if (!user) {
-            return res.status(400).json({ success: false, message: "User not found!" });
-        }
-
-        const otp = generateOtp();
-        const otpExpiry = Date.now() + 10 * 60 * 1000; // OTP expires in 10 minutes
-
-        // Store OTP with expiry time
-        otpStore[mobileNumber] = { otp, otpExpiry };
-
-        await client.messages.create({
-            body: `Your OTP for ${purpose} is: ${otp}`,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            to: mobileNumber,
-        });
-
-        res.json({ success: true, message: "OTP sent successfully!" });
-    } catch (error) {
-        console.error("Error sending OTP:", error);
-        res.status(500).json({ success: false, message: "Failed to send OTP!" });
-    }
-});
-
-// Verify OTP & Reset Password
-router.post("/verify", async (req, res) => {
-    const { mobileNumber, otp, newPassword, confirmPassword } = req.body;
-
-    try {
-        const storedOtpData = otpStore[mobileNumber];
-
-        if (!storedOtpData || storedOtpData.otp !== parseInt(otp)) {
-            return res.status(400).json({ success: false, message: "Invalid OTP!" });
-        }
-
-        if (storedOtpData.otpExpiry < Date.now()) {
-            return res.status(400).json({ success: false, message: "OTP has expired!" });
-        }
-
-        if (newPassword !== confirmPassword) {
-            return res.status(400).json({ success: false, message: "Passwords do not match!" });
-        }
-
-        const user = await User.findOne({ mobileNumber });
-        if (!user) {
-            return res.status(400).json({ success: false, message: "User not found!" });
-        }
-
-        user.password = await bcrypt.hash(newPassword, 10);
-        await user.save();
-
-        delete otpStore[mobileNumber]; // Clear OTP after reset
-        res.json({ success: true, message: "Password reset successful!" });
-    } catch (error) {
-        console.error("Error verifying OTP:", error);
-        res.status(500).json({ success: false, message: "Server error!" });
-    }
-});
-// Logout Route
-router.post("/logout", (req, res) => {
-    res.clearCookie("token");
-    res.json({ success: true, message: "Logged out successfully!" });
-});
-router.get("/api/user/:mobileNumber", async (req, res) => {
   try {
-    const { mobileNumber } = req.params;
-    const user = await User.findOne({ mobileNumber });
-
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
+    // Validate email format
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid email format!" 
+      });
     }
 
-    res.json({
-      username: user.username,
-      email: user.email,
-      mobileNumber: user.mobileNumber,
-      role: user.role,
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "No account found with this email!" 
+      });
+    }
+
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
+
+    // Store OTP in database
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    await user.save();
+
+    // Enhanced email content
+    const mailOptions = {
+      from: `"Recipe Finder" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `Your Recipe Finder Verification Code`,
+      text: `Your OTP for ${purpose} is: ${otp}\nThis code expires in 10 minutes.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background-color: #f8f9fa; padding: 20px; text-align: center;">
+            <h2 style="color: #2c3e50;">Recipe Finder</h2>
+          </div>
+          <div style="padding: 20px;">
+            <p>Hello,</p>
+            <p>Your verification code is:</p>
+            <div style="background-color: #f1f1f1; padding: 15px; text-align: center; 
+                        margin: 20px 0; font-size: 24px; font-weight: bold; 
+                        letter-spacing: 2px;">
+              ${otp}
+            </div>
+            <p>This code will expire in 10 minutes.</p>
+            <p>If you didn't request this code, please ignore this email.</p>
+          </div>
+          <div style="background-color: #f8f9fa; padding: 10px; text-align: center; 
+                      font-size: 12px; color: #7f8c8d;">
+            <p>© ${new Date().getFullYear()} Recipe Finder. All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      headers: {
+        'X-Priority': '1',
+        'X-MSMail-Priority': 'High',
+        'Importance': 'High'
+      }
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+    console.log(`OTP email sent to ${email}`);
+    return res.json({ 
+      success: true, 
+      message: "OTP sent to your email successfully!" 
     });
+
   } catch (error) {
-    console.error("Error fetching user:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error sending OTP email:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to process OTP request!",
+      error: error.message
+    });
   }
+});
+
+router.post("/mail/verify-otp", async (req, res) => {
+  const { email, otp, newPassword, confirmPassword } = req.body;
+
+  try {
+    // Validate inputs
+    if (!email || !otp || !newPassword || !confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "All fields are required!" 
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Passwords do not match!" 
+      });
+    }
+
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "No account found with this email!" 
+      });
+    }
+
+    // Verify OTP
+    if (!user.otp || user.otp !== otp) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Invalid OTP code!" 
+      });
+    }
+
+    if (user.otpExpiry < Date.now()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "OTP has expired!" 
+      });
+    }
+
+    // Update password
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    await user.save();
+
+    return res.json({ 
+      success: true, 
+      message: "Password reset successful! You can now login with your new password." 
+    });
+
+  } catch (error) {
+    console.error("Error verifying OTP:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: "Failed to reset password!",
+      error: error.message
+    });
+  }
+});
+router.post("/logout", (req, res) => {
+  res.clearCookie("token");
+  res.json({ success: true, message: "Logged out successfully!" });
+});
+router.get("/api/user/:email", async (req, res) => {
+try {
+  const { email } = req.params; // Changed from mobileNumber to email
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  res.json({
+    username: user.username,
+    email: user.email,
+    mobileNumber: user.mobileNumber, // Keeping mobileNumber in response if needed
+    role: user.role,
+  });
+} catch (error) {
+  console.error("Error fetching user:", error);
+  res.status(500).json({ message: "Server error" });
+}
 });
 router.get('/:userId', async (req, res) => {
   const { userId } = req.params;
@@ -265,35 +392,43 @@ router.get('/:userId', async (req, res) => {
   }
 });
 router.put('/:userId', upload.single('profilePicture'), async (req, res) => {
-  const { userId } = req.params;
-  const { username, email, mobileNumber, role } = req.body;
-
   try {
-    // Find the user
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    const { userId } = req.params;
+    const updates = {
+      username: req.body.username,
+      email: req.body.email,
+      mobileNumber: req.body.mobileNumber,
+      role: req.body.role
+    };
 
-    // Update only the fields that are provided
-    if (username) user.username = username;
-    if (email) user.email = email;
-    if (mobileNumber) user.mobileNumber = mobileNumber;
-    if (role) user.role = role;
-
-    // Update the profile picture if a new one is uploaded
     if (req.file) {
-      user.profilePicture = `/uploads/${req.file.filename}`;
+      updates.profilePicture = `/uploads/${req.file.filename}`;
     }
 
-    // Save the updated user
-    const updatedUser = await user.save();
+    const userBeforeUpdate = await User.findById(userId);
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      updates,
+      { new: true, runValidators: true }
+    );
 
-    // Send the updated user data in the response
-    res.status(200).json(updatedUser);
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Include roleChanged flag in response if role was modified
+    const response = {
+      ...updatedUser.toObject(),
+      roleChanged: userBeforeUpdate.role !== updatedUser.role
+    };
+
+    res.status(200).json(response);
   } catch (error) {
-    console.error('Error updating user profile:', error);
-    res.status(500).json({ error: 'Failed to update profile' });
+    console.error('Error updating user:', error);
+    res.status(500).json({ 
+      error: 'Failed to update profile',
+      details: error.message 
+    });
   }
 });
 module.exports = router;

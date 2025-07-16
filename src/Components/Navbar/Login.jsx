@@ -10,87 +10,87 @@ const Login = () => {
   const [message, setMessage] = useState("");
   const [showSignup, setShowSignup] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [resetData, setResetData] = useState({ mobileNumber: "", newPassword: "", confirmPassword: "" });
+  const [resetData, setResetData] = useState({ 
+    email: "", 
+    newPassword: "", 
+    confirmPassword: "" 
+  });
   const [otp, setOtp] = useState("");
   const [showOtpVerification, setShowOtpVerification] = useState(false);
   const navigate = useNavigate();
-const handleSubmit = async (e) => {
-  e.preventDefault();
-  try {
-    const response = await axios.post("http://localhost:5000/api/auth/login", formData, { withCredentials: true });
-    setMessage(response.data.message);
 
-    if (response.data.success) {
-      const userRole = response.data.user.role; // Convert to lowercase to avoid case mismatch
-      const userId = response.data.user._id; // Get the userId from the response
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post("http://localhost:5000/api/auth/login", formData, { withCredentials: true });
+      setMessage(response.data.message);
 
-      console.log("User Role:", userRole); // Debugging
-      console.log("User ID:", userId); // Debugging
+      if (response.data.success) {
+        const userRole = response.data.user.role;
+        const userId = response.data.user._id;
 
-      // Store userId in localStorage
-      localStorage.setItem("userId", userId);
-      console.log("Stored userId in localStorage:", localStorage.getItem("userId")); // Debugging
+        localStorage.setItem("userId", userId);
 
-      // Redirect based on role
-      if (userRole === "Chef") {
-        navigate("/chef"); // Replace with your actual Chef page route
-      } else if (userRole === "Ordinary") {
-        navigate("/normal"); // Replace with your actual Ordinary User page route
-      } else {
-        console.error("Unknown user role:", userRole);
-        setMessage("Invalid user role! Please contact support.");
+        if (userRole === "Chef") {
+          navigate("/chef");
+        } else if (userRole === "Ordinary") {
+          navigate("/normal");
+        } else {
+          console.error("Unknown user role:", userRole);
+          setMessage("Invalid user role! Please contact support.");
+        }
       }
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Invalid credentials! Please try again.");
     }
-  } catch (error) {
-    setMessage(error.response?.data?.message || "Invalid credentials! Please try again.");
-  }
-};
-  // Handle OTP request for reset password
+  };
+
+  // Handle OTP request for reset password (now using email)
   const handleSendOtp = async () => {
     try {
-      // Ensure mobile number is in E.164 format
-      const mobileNumber = resetData.mobileNumber.startsWith("+") ? resetData.mobileNumber : `+91${resetData.mobileNumber}`;
+      if (!resetData.email) {
+        alert("Please enter your email");
+        return;
+      }
 
-      console.log("Sending OTP request with:", { mobileNumber, purpose: "reset-password" });
-
-      const response = await axios.post("http://localhost:5000/api/auth/send", {
-        mobileNumber,
-        purpose: "reset-password", // Set purpose to reset-password
+      const response = await axios.post("http://localhost:5000/api/auth/mail/send-otp", {
+        email: resetData.email,
+        purpose: "reset-password"
       });
+      
       alert(response.data.message);
-      setShowOtpVerification(true); // Show OTP verification input
+      setShowOtpVerification(true);
     } catch (error) {
       console.error("Error sending OTP:", error.response?.data);
       alert(error.response?.data?.message || "Failed to send OTP");
     }
   };
 
-  // Handle OTP verification and password reset
+  // Handle OTP verification and password reset (now using email)
   const handleVerifyOtp = async () => {
     try {
-      // Ensure mobile number is in E.164 format
-      const mobileNumber = resetData.mobileNumber.startsWith("+") ? resetData.mobileNumber : `+91${resetData.mobileNumber}`;
+      if (resetData.newPassword !== resetData.confirmPassword) {
+        alert("Passwords don't match!");
+        return;
+      }
 
-      console.log("Verifying OTP with:", { mobileNumber, otp, purpose: "reset-password", newPassword: resetData.newPassword, confirmPassword: resetData.confirmPassword });
-
-      const response = await axios.post("http://localhost:5000/api/auth/verify", {
-        mobileNumber,
+      const response = await axios.post("http://localhost:5000/api/auth/mail/verify-otp", {
+        email: resetData.email,
         otp,
-        purpose: "reset-password", // Set purpose to reset-password
         newPassword: resetData.newPassword,
-        confirmPassword: resetData.confirmPassword,
+        confirmPassword: resetData.confirmPassword
       });
+      
       alert(response.data.message);
-      setShowOtpVerification(false); // Hide OTP verification input
-      setShowForgotPassword(false); // Close the reset password modal
-      setResetData({ mobileNumber: "", newPassword: "", confirmPassword: "" }); // Clear fields
+      setShowOtpVerification(false);
+      setShowForgotPassword(false);
+      setResetData({ email: "", newPassword: "", confirmPassword: "" });
     } catch (error) {
       console.error("Error verifying OTP:", error.response?.data);
-      alert(error.response?.data?.message || "Invalid OTP");
+      alert(error.response?.data?.message || "Invalid OTP or password requirements not met");
     }
   };
 
-  // Render Signup component if showSignup is true
   if (showSignup) {
     return <Signup />;
   }
@@ -146,20 +146,20 @@ const handleSubmit = async (e) => {
         </form>
       </div>
 
-      {/* Forgot Password Modal */}
+      {/* Forgot Password Modal - Updated to use email */}
       {showForgotPassword && (
         <div className="forgot-password-modal">
           <div className="modal-content">
             <h3>Reset Password</h3>
             <form onSubmit={(e) => e.preventDefault()}>
-              {/* Step 1: Send OTP */}
+              {/* Step 1: Send OTP to email */}
               {!showOtpVerification && (
                 <>
                   <input
-                    type="text"
-                    placeholder="Mobile Number (e.g., +911234567890)"
-                    value={resetData.mobileNumber}
-                    onChange={(e) => setResetData({ ...resetData, mobileNumber: e.target.value })}
+                    type="email"
+                    placeholder="Your registered email"
+                    value={resetData.email}
+                    onChange={(e) => setResetData({ ...resetData, email: e.target.value })}
                     required
                   />
                   <button type="button" onClick={handleSendOtp}>Send OTP</button>
@@ -169,6 +169,7 @@ const handleSubmit = async (e) => {
               {/* Step 2: Verify OTP and Reset Password */}
               {showOtpVerification && (
                 <>
+                  <p>OTP sent to: {resetData.email}</p>
                   <input
                     type="text"
                     placeholder="Enter OTP"
@@ -194,7 +195,17 @@ const handleSubmit = async (e) => {
                 </>
               )}
 
-              <button type="button" onClick={() => setShowForgotPassword(false)}>Close</button>
+              <button 
+                type="button" 
+                className="cancel-btn"
+                onClick={() => {
+                  setShowForgotPassword(false);
+                  setShowOtpVerification(false);
+                  setResetData({ email: "", newPassword: "", confirmPassword: "" });
+                }}
+              >
+                Cancel
+              </button>
             </form>
           </div>
         </div>

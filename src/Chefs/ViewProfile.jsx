@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, Edit, Lock, Phone, Globe } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import axios from 'axios';
-import imageCompression from 'browser-image-compression'; // Import image compression library
+import imageCompression from 'browser-image-compression';
 import Header from './Header';
 
 const ViewProfile = ({ onClose = () => {} }) => {
@@ -22,7 +22,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
   const [error, setError] = useState('');
   const [showOTPPopup, setShowOTPPopup] = useState(false);
   const [showPasswordPopup, setShowPasswordPopup] = useState(false);
-  const [mobileNumber, setMobileNumber] = useState('');
   const [otp, setOTP] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -38,15 +37,15 @@ const ViewProfile = ({ onClose = () => {} }) => {
         const response = await axios.get(`http://localhost:5000/api/auth/${userId}`);
         const userData = response.data;
 
-        // Ensure the profilePicture URL is complete
-        if (userData.profilePicture) {
-          userData.profilePicture = `http://localhost:5000${userData.profilePicture}`;
+        // Handle profile picture URL
+        let profilePicUrl = userData.profilePicture || '';
+        if (profilePicUrl && !profilePicUrl.startsWith('http')) {
+          profilePicUrl = `http://localhost:5000${profilePicUrl}`;
         }
 
         setUser(userData);
         setFormData(userData);
-        setProfilePicture(userData.profilePicture || '');
-        setMobileNumber(userData.mobileNumber || ''); // Pre-fill mobile number
+        setProfilePicture(profilePicUrl);
       } catch (error) {
         console.error('Error fetching user data:', error);
         setError('Failed to fetch user data. Please try again later.');
@@ -54,9 +53,8 @@ const ViewProfile = ({ onClose = () => {} }) => {
     };
 
     fetchUserData();
-  }, []);
+  }, [isEditing]); // Refresh when editing state changes
 
-  // Handle input changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -68,16 +66,16 @@ const ViewProfile = ({ onClose = () => {} }) => {
       try {
         // Compress the image
         const options = {
-          maxSizeMB: 1, // Maximum size in MB
-          maxWidthOrHeight: 800, // Maximum width or height
-          useWebWorker: true, // Use a web worker for better performance
+          maxSizeMB: 1,
+          maxWidthOrHeight: 800,
+          useWebWorker: true,
         };
         const compressedFile = await imageCompression(file, options);
 
-        // Convert the compressed file to base64
+        // Convert to base64 for preview
         const reader = new FileReader();
         reader.onloadend = () => {
-          setProfilePicture(reader.result); // Set the base64 string as the profile picture
+          setProfilePicture(reader.result);
         };
         reader.readAsDataURL(compressedFile);
       } catch (error) {
@@ -87,7 +85,6 @@ const ViewProfile = ({ onClose = () => {} }) => {
     }
   };
 
-  // Handle save action
   const handleSave = async () => {
     try {
       const userId = localStorage.getItem('userId');
@@ -95,62 +92,77 @@ const ViewProfile = ({ onClose = () => {} }) => {
         throw new Error('User ID is missing. Please log in again.');
       }
 
-      // Create a FormData object
-      const formData = new FormData();
+      // Check if role is being changed
+      const roleChanged = formData.role !== user.role;
 
-      // Append all fields, including unchanged ones
-      formData.append('username', formData.username || user.username);
-      formData.append('email', formData.email || user.email);
-      formData.append('mobileNumber', formData.mobileNumber || user.mobileNumber);
-      formData.append('role', formData.role || user.role);
+      const formDataToSend = new FormData();
+      formDataToSend.append('username', formData.username);
+      formDataToSend.append('email', formData.email);
+      formDataToSend.append('mobileNumber', formData.mobileNumber);
+      formDataToSend.append('role', formData.role);
 
-      // Append the profile picture if it's being updated
-      if (profilePicture) {
-        const file = await fetch(profilePicture).then((res) => res.blob());
-        formData.append('profilePicture', file, 'profilePicture.jpg');
-      } else {
-        // If the profile picture is not being updated, send the existing one
-        formData.append('profilePicture', user.profilePicture);
+      // Only append profile picture if it's a new one
+      if (profilePicture && profilePicture !== user.profilePicture) {
+        if (profilePicture.startsWith('data:')) {
+          const blob = await fetch(profilePicture).then(res => res.blob());
+          formDataToSend.append('profilePicture', blob, 'profile.jpg');
+        } else {
+          formDataToSend.append('profilePicture', profilePicture);
+        }
       }
 
-      // Log the data being sent
-      console.log('Sending Data:', {
-        username: formData.get('username'),
-        email: formData.get('email'),
-        mobileNumber: formData.get('mobileNumber'),
-        role: formData.get('role'),
-        profilePicture: formData.get('profilePicture') ? 'File Uploaded' : 'No File',
-      });
+      const response = await axios.put(
+        `http://localhost:5000/api/auth/${userId}`,
+        formDataToSend,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
 
-      // Send the request to update the profile
-      const response = await axios.put(`http://localhost:5000/api/auth/${userId}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
+      // Update local state with the response data
+      const updatedUser = response.data;
+      let updatedProfilePic = updatedUser.profilePicture || '';
+      if (updatedProfilePic && !updatedProfilePic.startsWith('http')) {
+        updatedProfilePic = `http://localhost:5000${updatedProfilePic}`;
+      }
 
-      // Log the response data
-      console.log('Received Response:', response.data);
-
-      // Update the state with the new data
+      setUser(updatedUser);
+      setFormData(updatedUser);
+      setProfilePicture(updatedProfilePic);
       setIsEditing(false);
-      setUser(response.data);
       setError('');
+
+      // If role was changed, force logout
+      if (roleChanged) {
+        alert('Your role has been changed. Please login again to continue.');
+        localStorage.removeItem('userId');
+        localStorage.removeItem('token');
+        window.location.href = '/login'; // Full page reload to clear state
+      }
+
     } catch (error) {
-      console.error('Error updating user data:', error);
-      setError('Failed to update profile. Please try again.');
+      console.error('Error updating profile:', error);
+      setError(error.response?.data?.error || 'Failed to update profile. Please try again.');
+      
+      // If unauthorized (due to role change), force logout
+      if (error.response?.status === 401) {
+        localStorage.removeItem('userId');
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     }
   };
 
-  // Handle OTP sending
   const handleSendOTP = async () => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/send', {
-        mobileNumber,
+      const response = await axios.post('http://localhost:5000/api/auth/mail/send-otp', {
+        email: formData.email,
       });
       if (response.data.success) {
         setShowOTPPopup(false);
-        setShowPasswordPopup(true); // Open the password change popup
+        setShowPasswordPopup(true);
       } else {
         setError('Failed to send OTP. Please try again.');
       }
@@ -159,31 +171,31 @@ const ViewProfile = ({ onClose = () => {} }) => {
       setError('Failed to send OTP. Please try again.');
     }
   };
-// Handle password update
-const handleUpdatePassword = async () => {
-  if (newPassword !== confirmPassword) {
+
+  const handleUpdatePassword = async () => {
+    if (newPassword !== confirmPassword) {
       setError('Passwords do not match.');
       return;
-  }
+    }
 
-  try {
-      const response = await axios.post('http://localhost:5000/api/auth/verify', {
-          mobileNumber,
-          otp,
-          newPassword,
-          confirmPassword, // Ensure confirmPassword is sent to the backend
+    try {
+      const response = await axios.post('http://localhost:5000/api/auth/mail/verify-otp', {
+        email: formData.email,
+        otp,
+        newPassword,
+        confirmPassword,
       });
       if (response.data.success) {
-          setShowPasswordPopup(false);
-          setError('Password updated successfully.');
+        setShowPasswordPopup(false);
+        setError('Password updated successfully.');
       } else {
-          setError(response.data.message || 'Failed to update password. Please try again.');
+        setError(response.data.message || 'Failed to update password. Please try again.');
       }
-  } catch (error) {
+    } catch (error) {
       console.error('Error updating password:', error);
       setError(error.response?.data?.message || 'Failed to update password. Please try again.');
-  }
-};
+    }
+  };
 
   return (
     <div>
@@ -206,7 +218,6 @@ const handleUpdatePassword = async () => {
           </button>
         </div>
 
-        {/* Error Message */}
         {error && (
           <div style={{ color: 'red', marginBottom: '20px', textAlign: 'center' }}>
             {error}
@@ -217,7 +228,7 @@ const handleUpdatePassword = async () => {
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
           <div style={{ position: 'relative', width: '120px', height: '120px' }}>
             <img
-              src={profilePicture || '/path/to/local/placeholder.png'} // Use a local image
+              src={`${profilePicture || '/default-profile.png'}?${Date.now()}`}
               alt="Profile"
               style={{
                 width: '100%',
@@ -225,6 +236,9 @@ const handleUpdatePassword = async () => {
                 borderRadius: '50%',
                 objectFit: 'cover',
                 border: '2px solid #e5e7eb',
+              }}
+              onError={(e) => {
+                e.target.src = '/default-profile.png';
               }}
             />
             {isEditing && (
@@ -369,7 +383,11 @@ const handleUpdatePassword = async () => {
           {isEditing ? (
             <>
               <button
-                onClick={() => setIsEditing(false)}
+                onClick={() => {
+                  setIsEditing(false);
+                  setFormData(user); // Reset form data
+                  setProfilePicture(user.profilePicture || '');
+                }}
                 style={{
                   padding: '8px 16px',
                   backgroundColor: '#f3f4f6',
@@ -414,68 +432,58 @@ const handleUpdatePassword = async () => {
 
         {/* OTP Popup */}
         {showOTPPopup && (
-          <div style={{
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}>
             <div style={{
-              backgroundColor: '#ffffff',
-              padding: '20px',
-              borderRadius: '8px',
-              width: '300px',
+              position: 'fixed',
+              top: '0',
+              left: '0',
+              width: '100%',
+              height: '100%',
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
             }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>Send OTP</h3>
-              <div style={{ marginBottom: '10px' }}>
-                <input
-                  type="tel"
-                  value={mobileNumber}
-                  onChange={(e) => setMobileNumber(e.target.value)}
-                  placeholder="Mobile Number"
+              <div style={{
+                backgroundColor: '#ffffff',
+                padding: '20px',
+                borderRadius: '8px',
+                width: '300px',
+              }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '10px' }}>Send OTP</h3>
+                <div style={{ marginBottom: '10px' }}>
+                  <p>We'll send OTP to your email:</p>
+                  <p style={{ fontWeight: 'bold' }}>{formData.email}</p>
+                </div>
+                <button
+                  onClick={handleSendOTP}
                   style={{
                     width: '100%',
-                    padding: '8px',
+                    padding: '8px 16px',
+                    backgroundColor: '#10b981',
+                    color: '#ffffff',
                     borderRadius: '4px',
-                    border: '1px solid #e5e7eb',
+                    border: 'none',
+                    cursor: 'pointer',
                   }}
-                />
+                >
+                  Send OTP
+                </button>
+                <button
+                  onClick={() => setShowOTPPopup(false)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 16px',
+                    backgroundColor: '#f3f4f6',
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    marginTop: '10px',
+                  }}
+                >
+                  Cancel
+                </button>
               </div>
-              <button
-                onClick={handleSendOTP}
-                style={{
-                  width: '100%',
-                  padding: '8px 16px',
-                  backgroundColor: '#10b981',
-                  color: '#ffffff',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                Send OTP
-              </button>
-              <button
-                onClick={() => setShowOTPPopup(false)}
-                style={{
-                  width: '100%',
-                  padding: '8px 16px',
-                  backgroundColor: '#f3f4f6',
-                  borderRadius: '4px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  marginTop: '10px',
-                }}
-              >
-                Cancel
-              </button>
             </div>
-          </div>
         )}
 
         {/* Password Change Popup */}
