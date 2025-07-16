@@ -5,8 +5,6 @@ const Profile = ({ userId }) => {
   const [user, setUser] = useState(null);
   const [chef, setChef] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
-
-  // Fetch user and chef profile data
   useEffect(() => {
     const fetchProfile = async () => {
       const response = await axios.get(`/api/user/profile/${userId}`);

@@ -44,7 +44,7 @@ const ProfileDropdown = () => {
 
   const handleLogout = () => {
     // Perform logout operations here (e.g., clear tokens, user data, etc.)
-    navigate('/login'); // Redirect to the login page
+    navigate('/signup'); // Redirect to the login page
   };
 
   return (

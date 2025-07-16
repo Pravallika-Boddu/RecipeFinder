@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import RecipeCard from './Card'; // Reusable RecipeCard component
+import RecipeCard from './Card';
 import axios from 'axios';
 import Navbar from './Navbarr';
-
 const ChefRecipes = () => {
   const [recipes, setRecipes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Fetch all recipes from the backend
   useEffect(() => {
     const fetchRecipes = async () => {
       try {

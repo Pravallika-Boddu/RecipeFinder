@@ -44,7 +44,7 @@ const Header = () => {
   };
 
   const handleLogout = () => {
-    window.location.href = "/login";
+    window.location.href = "/signup";
   };
 
   const handleThemeChange = (selectedTheme) => {
