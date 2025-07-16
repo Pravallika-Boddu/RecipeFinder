@@ -3,135 +3,97 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const path = require('path');
 
-// Initialize Express
 const app = express();
 
 // =====================
-// SECURITY MIDDLEWARE
+// MIDDLEWARE
 // =====================
 app.use(helmet());
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
-// =====================
-// CORS CONFIGURATION (FIXED)
-// =====================
-const allowedOrigins = [
-  'https://recipe-finder-delta-five.vercel.app', // Removed trailing slash
-  'http://localhost:5173'
-];
-
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error(`CORS blocked: ${origin}`));
-    }
-  },
+// CORS Configuration (Updated for Vercel)
+app.use(cors({
+  origin: [
+    'https://recipe-finder-delta-five.vercel.app',
+    'http://localhost:5173'
+  ],
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 200
-};
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}));
 
-// Apply CORS middleware
-app.use(cors(corsOptions));
-
-// Explicit preflight handler
-app.options('*', cors(corsOptions)); // Must use same options
-
-// =====================
-// RATE LIMITING
-// =====================
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  message: 'Too many requests from this IP'
-});
-app.use('/api/', limiter);
+// Handle preflight requests
+app.options('*', cors());
 
 // =====================
 // DATABASE CONNECTION
 // =====================
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/recipefinder';
-
+const MONGODB_URI = process.env.MONGODB_URI;
 mongoose.connect(MONGODB_URI, {
   useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 10000, // Increased timeout
-  socketTimeoutMS: 60000,
-  maxPoolSize: 10
+  useUnifiedTopology: true
 })
 .then(() => console.log('✅ MongoDB connected successfully'))
-.catch(err => {
-  console.error('❌ MongoDB connection error:', err);
-  process.exit(1);
-});
+.catch(err => console.error('❌ MongoDB connection error:', err));
 
 // DB Event Listeners
-mongoose.connection.on('connected', () => console.log('Mongoose connected to DB'));
-mongoose.connection.on('error', err => console.error('Mongoose error:', err));
-mongoose.connection.on('disconnected', () => console.warn('Mongoose disconnected'));
+mongoose.connection.on('error', err => console.error('MongoDB error:', err));
 
 // =====================
-// ROUTES
-// =====================
-const routes = [
-  require('./routes/recipes'),
-  require('./routes/mealPlan'),
-  require('./routes/auth'),
-  require('./routes/chef'),
-  require('./routes/fetch')
-];
-
-routes.forEach(route => {
-  app.use('/api', route);
-});
-
-// =====================
-// STATIC FILES
+// ROUTES (Fixed - Maintain Original Structure)
 // =====================
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// Original route structure that worked before
+app.use('/api/recipes', require('./routes/recipes'));
+app.use('/api/mealPlan', require('./routes/mealPlan'));
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/chef', require('./routes/chef'));
+app.use('/api', require('./routes/fetch'));
+
 // =====================
-// HEALTH CHECK (ENHANCED)
+// ROUTE DEBUGGER
 // =====================
-app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    uptime: process.uptime(),
-    dbStatus: mongoose.connection.readyState,
-    timestamp: new Date().toISOString()
+app.get('/api/debug-routes', (req, res) => {
+  const routes = [];
+  app._router.stack.forEach(middleware => {
+    if (middleware.route) {
+      routes.push({
+        path: middleware.route.path,
+        methods: Object.keys(middleware.route.methods)
+      });
+    } else if (middleware.name === 'router') {
+      middleware.handle.stack.forEach(handler => {
+        if (handler.route) {
+          routes.push({
+            path: handler.route.path,
+            methods: Object.keys(handler.route.methods)
+          });
+        }
+      });
+    }
   });
+  res.json(routes);
 });
 
 // =====================
 // ERROR HANDLERS
 // =====================
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({ 
     success: false,
     message: 'Route not found',
-    path: req.originalUrl
+    requestedPath: req.originalUrl,
+    suggestion: 'Check /api/debug-routes for available endpoints'
   });
 });
 
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error('⚠️ Server error:', err.stack);
-  
-  // Special handling for CORS errors
-  if (err.message.includes('CORS')) {
-    return res.status(403).json({ 
-      success: false,
-      message: 'Cross-origin request blocked',
-      allowedOrigins
-    });
-  }
-
+  console.error('⚠️ Error:', err.stack);
   res.status(500).json({ 
     success: false,
     message: 'Internal server error'
@@ -142,36 +104,19 @@ app.use((err, req, res, next) => {
 // SERVER START
 // =====================
 const PORT = process.env.PORT || 5000;
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`🟢 Allowed origins: ${allowedOrigins.join(', ')}`);
-});
-
-// =====================
-// GRACEFUL SHUTDOWN
-// =====================
-const shutdown = () => {
-  console.log('\n🛑 Shutting down gracefully...');
-  server.close(() => {
-    mongoose.connection.close(false, () => {
-      console.log('🔴 All connections closed');
-      process.exit(0);
-    });
-  });
-};
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-
-// =====================
-// DEBUGGING (Dev only)
-// =====================
-if (process.env.NODE_ENV === 'development') {
+  console.log('🟢 Allowed origins:', [
+    'https://recipe-finder-delta-five.vercel.app',
+    'http://localhost:5173'
+  ].join(', '));
+  
+  // Debug: Log registered routes
   console.log('\n🔍 Registered routes:');
-  app._router.stack
-    .filter(r => r.route)
-    .forEach(r => {
-      const method = Object.keys(r.route.methods)[0].toUpperCase();
-      console.log(`${method.padEnd(6)} ${r.route.path}`);
-    });
-}
+  app._router.stack.forEach(layer => {
+    if (layer.route) {
+      const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+      console.log(`${methods.join(', ')} ${layer.route.path}`);
+    }
+  });
+});
