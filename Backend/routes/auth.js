@@ -7,6 +7,7 @@ dotenv.config();
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const jwt = require('jsonwebtoken'); // Added for JWT support
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -18,9 +19,19 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({ storage });
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
 
-// Create email transporter
+// Email transporter configuration
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -28,16 +39,31 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS
   }
 });
+
+// Generate JWT token
+const generateToken = (userId) => {
+  return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
+    expiresIn: '1d' // Token expires in 1 day
+  });
+};
+
+// Improved OTP generation and validation
+const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Enhanced send OTP endpoint
 router.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
 
     // Validate email format
     if (!/\S+@\S+\.\S+/.test(email)) {
-      return res.status(400).json({ message: "Invalid email format!" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email format!" 
+      });
     }
 
-    // Check if verified user already exists
+    // Check if verified user exists
     const existingVerifiedUser = await User.findOne({ email, verified: true });
     if (existingVerifiedUser) {
       return res.status(400).json({ 
@@ -46,24 +72,23 @@ router.post("/send-otp", async (req, res) => {
       });
     }
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = generateOTP();
+    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
 
-    // Find or create user - more robust version
-    let user = await User.findOneAndUpdate(
+    // Upsert user with OTP
+    const user = await User.findOneAndUpdate(
       { email },
       {
+        $set: {
+          otp,
+          otpExpiry,
+          verified: false
+        },
         $setOnInsert: {
           email,
-          verified: false,
-          // Temporary placeholder values
           username: `temp_${Date.now()}`,
           mobileNumber: '0000000000',
           password: 'temporary_password'
-        },
-        $set: {
-          otp,
-          otpExpiry: Date.now() + 10 * 60 * 1000 // 10 minutes
         }
       },
       {
@@ -73,18 +98,22 @@ router.post("/send-otp", async (req, res) => {
       }
     );
 
-    console.log("User after OTP generation:", user); // Debug log
-
     // Send OTP email
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: `"Recipe Finder" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'Your OTP for Recipe Finder',
-      text: `Your OTP is: ${otp}. It will expire in 10 minutes.`,
-      html: `<p>Your OTP is: <strong>${otp}</strong>. It will expire in 10 minutes.</p>`
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #2c3e50;">Recipe Finder Verification</h2>
+          <p>Your OTP is: <strong>${otp}</strong></p>
+          <p>This code will expire in 10 minutes.</p>
+        </div>
+      `
     };
 
     await transporter.sendMail(mailOptions);
+    
     res.status(200).json({ 
       success: true,
       message: "OTP sent to email successfully!" 
@@ -99,27 +128,34 @@ router.post("/send-otp", async (req, res) => {
     });
   }
 });
+
+// Enhanced verify OTP endpoint
 router.post("/verify-otp", async (req, res) => {
   try {
     const { username, email, mobileNumber, password, role, otp } = req.body;
 
-    // First find user by email regardless of verification status
+    // Basic validation
+    if (!username || !email || !mobileNumber || !password || !role || !otp) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields are required!" 
+      });
+    }
+
     const user = await User.findOne({ email });
     
     if (!user) {
       return res.status(400).json({ 
         success: false,
-        message: "No user found with this email. Please request a new OTP.",
-        email: email
+        message: "No user found with this email. Please request a new OTP."
       });
     }
 
-    // Check if already verified
+    // Check verification status
     if (user.verified) {
       return res.status(400).json({ 
         success: false,
-        message: "This email is already verified. Please login instead.",
-        email: email
+        message: "This email is already verified. Please login instead."
       });
     }
 
@@ -127,15 +163,11 @@ router.post("/verify-otp", async (req, res) => {
     if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
       return res.status(400).json({ 
         success: false,
-        message: "Invalid or expired OTP!",
-        serverOtp: user.otp,
-        clientOtp: otp,
-        otpExpiry: user.otpExpiry,
-        currentTime: Date.now()
+        message: "Invalid or expired OTP!"
       });
     }
 
-    // Update user with final details
+    // Update user details
     user.username = username;
     user.mobileNumber = mobileNumber;
     user.password = await bcrypt.hash(password, 10);
@@ -146,9 +178,13 @@ router.post("/verify-otp", async (req, res) => {
 
     await user.save();
 
+    // Generate token for immediate login
+    const token = generateToken(user._id);
+
     res.status(200).json({ 
       success: true,
       message: "Registration successful!",
+      token,
       user: {
         _id: user._id,
         username: user.username,
@@ -159,62 +195,82 @@ router.post("/verify-otp", async (req, res) => {
     
   } catch (error) {
     console.error("Error verifying OTP:", error);
+    const message = error.code === 11000 
+      ? "Username or mobile number already exists" 
+      : "Registration failed";
+    
     res.status(500).json({ 
       success: false,
-      message: error.code === 11000 
-        ? "Username or mobile number already exists" 
-        : "Registration failed",
+      message,
       error: error.message
     });
   }
 });
+
+// Enhanced login endpoint
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  console.log("🟡 Login attempt for email:", email);
-
-  if (!email || !password) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
   try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false,
+        message: "All fields are required" 
+      });
+    }
+
     const user = await User.findOne({ email });
 
     if (!user) {
-      console.log("❌ User not found for email:", email);
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email or password" 
+      });
+    }
+
+    if (!user.verified) {
+      return res.status(403).json({ 
+        success: false,
+        message: "Account not verified. Please verify your email first." 
+      });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      console.log("❌ Password does not match for email:", email);
-      return res.status(400).json({ message: "Invalid email or password" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid email or password" 
+      });
     }
 
-    console.log("✅ Login successful for email:", email);
+    // Generate token
+    const token = generateToken(user._id);
 
     res.status(200).json({
       success: true,
       message: "Login successful",
+      token,
       user: {
-        _id: user._id, // Include userId in the response
-        role: user.role, // Include user role in the response
-      },
+        _id: user._id,
+        username: user.username,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (error) {
-    console.error("❌ Server error:", error);
-    res.status(500).json({ message: "Server error" });
+    console.error("Login error:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
   }
 });
-const generateOtp = () => Math.floor(100000 + Math.random() * 900000);
 
-// Temporary storage for OTPs (in-memory)
-const otpStore = {};
+// Password reset endpoints
 router.post("/mail/send-otp", async (req, res) => {
-  const { email, purpose = "password reset" } = req.body;
-
   try {
-    // Validate email format
+    const { email, purpose = "password reset" } = req.body;
+
     if (!/\S+@\S+\.\S+/.test(email)) {
       return res.status(400).json({ 
         success: false, 
@@ -230,61 +286,34 @@ router.post("/mail/send-otp", async (req, res) => {
       });
     }
 
-    // Generate OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
-
-    // Store OTP in database
+    const otp = generateOTP();
     user.otp = otp;
-    user.otpExpiry = otpExpiry;
+    user.otpExpiry = Date.now() + 10 * 60 * 1000;
     await user.save();
 
-    // Enhanced email content
     const mailOptions = {
       from: `"Recipe Finder" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: `Your Recipe Finder Verification Code`,
-      text: `Your OTP for ${purpose} is: ${otp}\nThis code expires in 10 minutes.`,
+      subject: `Password Reset OTP`,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <div style="background-color: #f8f9fa; padding: 20px; text-align: center;">
-            <h2 style="color: #2c3e50;">Recipe Finder</h2>
-          </div>
-          <div style="padding: 20px;">
-            <p>Hello,</p>
-            <p>Your verification code is:</p>
-            <div style="background-color: #f1f1f1; padding: 15px; text-align: center; 
-                        margin: 20px 0; font-size: 24px; font-weight: bold; 
-                        letter-spacing: 2px;">
-              ${otp}
-            </div>
-            <p>This code will expire in 10 minutes.</p>
-            <p>If you didn't request this code, please ignore this email.</p>
-          </div>
-          <div style="background-color: #f8f9fa; padding: 10px; text-align: center; 
-                      font-size: 12px; color: #7f8c8d;">
-            <p>© ${new Date().getFullYear()} Recipe Finder. All rights reserved.</p>
-          </div>
+          <h2 style="color: #2c3e50;">Password Reset</h2>
+          <p>Your OTP is: <strong>${otp}</strong></p>
+          <p>This code will expire in 10 minutes.</p>
         </div>
-      `,
-      headers: {
-        'X-Priority': '1',
-        'X-MSMail-Priority': 'High',
-        'Importance': 'High'
-      }
+      `
     };
 
-    // Send email
     await transporter.sendMail(mailOptions);
-    console.log(`OTP email sent to ${email}`);
-    return res.json({ 
+    
+    res.json({ 
       success: true, 
       message: "OTP sent to your email successfully!" 
     });
 
   } catch (error) {
     console.error("Error sending OTP email:", error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false, 
       message: "Failed to process OTP request!",
       error: error.message
@@ -293,10 +322,9 @@ router.post("/mail/send-otp", async (req, res) => {
 });
 
 router.post("/mail/verify-otp", async (req, res) => {
-  const { email, otp, newPassword, confirmPassword } = req.body;
-
   try {
-    // Validate inputs
+    const { email, otp, newPassword, confirmPassword } = req.body;
+
     if (!email || !otp || !newPassword || !confirmPassword) {
       return res.status(400).json({ 
         success: false, 
@@ -319,86 +347,92 @@ router.post("/mail/verify-otp", async (req, res) => {
       });
     }
 
-    // Verify OTP
-    if (!user.otp || user.otp !== otp) {
+    if (!user.otp || user.otp !== otp || user.otpExpiry < Date.now()) {
       return res.status(400).json({ 
         success: false, 
-        message: "Invalid OTP code!" 
+        message: "Invalid or expired OTP!" 
       });
     }
 
-    if (user.otpExpiry < Date.now()) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "OTP has expired!" 
-      });
-    }
-
-    // Update password
     user.password = await bcrypt.hash(newPassword, 10);
     user.otp = undefined;
     user.otpExpiry = undefined;
     await user.save();
 
-    return res.json({ 
+    res.json({ 
       success: true, 
       message: "Password reset successful! You can now login with your new password." 
     });
 
   } catch (error) {
     console.error("Error verifying OTP:", error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false, 
       message: "Failed to reset password!",
       error: error.message
     });
   }
 });
-router.post("/logout", (req, res) => {
-  res.clearCookie("token");
-  res.json({ success: true, message: "Logged out successfully!" });
-});
+
+// User profile endpoints
 router.get("/api/user/:email", async (req, res) => {
-try {
-  const { email } = req.params; // Changed from mobileNumber to email
-  const user = await User.findOne({ email });
-
-  if (!user) {
-    return res.status(404).json({ message: "User not found" });
-  }
-
-  res.json({
-    username: user.username,
-    email: user.email,
-    mobileNumber: user.mobileNumber, // Keeping mobileNumber in response if needed
-    role: user.role,
-  });
-} catch (error) {
-  console.error("Error fetching user:", error);
-  res.status(500).json({ message: "Server error" });
-}
-});
-router.get('/:userId', async (req, res) => {
-  const { userId } = req.params;
   try {
-    const user = await User.findById(userId);
+    const { email } = req.params;
+    const user = await User.findOne({ email }).select('-password -otp -otpExpiry');
+
     if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: "User not found" 
+      });
     }
-    res.status(200).json(user);
+
+    res.json({
+      success: true,
+      user
+    });
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    res.status(500).json({ 
+      success: false,
+      message: "Server error" 
+    });
+  }
+});
+
+router.get('/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select('-password -otp -otpExpiry');
+
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user
+    });
   } catch (err) {
     console.error('Error fetching user:', err);
-    res.status(500).json({ error: 'Failed to fetch user' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to fetch user',
+      error: err.message
+    });
   }
 });
+
 router.put('/:userId', upload.single('profilePicture'), async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = {
       username: req.body.username,
       email: req.body.email,
-      mobileNumber: req.body.mobileNumber,
-      role: req.body.role
+      mobileNumber: req.body.mobileNumber
     };
 
     if (req.file) {
@@ -406,19 +440,22 @@ router.put('/:userId', upload.single('profilePicture'), async (req, res) => {
     }
 
     const userBeforeUpdate = await User.findById(userId);
+    if (!userBeforeUpdate) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found' 
+      });
+    }
+
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       updates,
       { new: true, runValidators: true }
-    );
+    ).select('-password -otp -otpExpiry');
 
-    if (!updatedUser) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Include roleChanged flag in response if role was modified
     const response = {
-      ...updatedUser.toObject(),
+      success: true,
+      user: updatedUser,
       roleChanged: userBeforeUpdate.role !== updatedUser.role
     };
 
@@ -426,9 +463,19 @@ router.put('/:userId', upload.single('profilePicture'), async (req, res) => {
   } catch (error) {
     console.error('Error updating user:', error);
     res.status(500).json({ 
-      error: 'Failed to update profile',
-      details: error.message 
+      success: false,
+      message: 'Failed to update profile',
+      error: error.message 
     });
   }
 });
+
+// Logout endpoint
+router.post("/logout", (req, res) => {
+  res.status(200).json({ 
+    success: true, 
+    message: "Logged out successfully!" 
+  });
+});
+
 module.exports = router;
