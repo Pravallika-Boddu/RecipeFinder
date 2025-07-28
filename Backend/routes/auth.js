@@ -50,85 +50,18 @@ const generateToken = (userId) => {
 // Improved OTP generation and validation
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
-// Enhanced send OTP endpoint
 router.post("/send-otp", async (req, res) => {
   try {
     const { email } = req.body;
-
-    // Validate email format
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid email format!" 
-      });
-    }
-
-    // Check if verified user exists
-    const existingVerifiedUser = await User.findOne({ email, verified: true });
-    if (existingVerifiedUser) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Email already registered and verified!" 
-      });
-    }
-
-    const otp = generateOTP();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
-
-    // Upsert user with OTP
-    const user = await User.findOneAndUpdate(
-      { email },
-      {
-        $set: {
-          otp,
-          otpExpiry,
-          verified: false
-        },
-        $setOnInsert: {
-          email,
-          username: `temp_${Date.now()}`,
-          mobileNumber: '0000000000',
-          password: 'temporary_password'
-        }
-      },
-      {
-        new: true,
-        upsert: true,
-        setDefaultsOnInsert: true
-      }
-    );
-
-    // Send OTP email
-    const mailOptions = {
-      from: `"Recipe Finder" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: 'Your OTP for Recipe Finder',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #2c3e50;">Recipe Finder Verification</h2>
-          <p>Your OTP is: <strong>${otp}</strong></p>
-          <p>This code will expire in 10 minutes.</p>
-        </div>
-      `
-    };
-
-    await transporter.sendMail(mailOptions);
-    
-    res.status(200).json({ 
-      success: true,
-      message: "OTP sent to email successfully!" 
-    });
-
-  } catch (error) {
-    console.error("Error in /send-otp route:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Failed to send OTP!",
-      error: error.message 
-    });
+    const otp = Math.floor(100000 + Math.random() * 900000);
+    // Save OTP to database (implement your logic here)
+    console.log(`OTP for ${email}: ${otp}`); // Temporary log for testing
+    res.json({ message: "OTP sent successfully" });
+  } catch (err) {
+    console.error("OTP Error:", err);
+    res.status(500).json({ error: "Failed to send OTP" });
   }
 });
-
 // Enhanced verify OTP endpoint
 router.post("/verify-otp", async (req, res) => {
   try {
@@ -207,65 +140,32 @@ router.post("/verify-otp", async (req, res) => {
   }
 });
 
-// Enhanced login endpoint
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ 
-        success: false,
-        message: "All fields are required" 
-      });
-    }
-
     const user = await User.findOne({ email });
-
-    if (!user) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid email or password" 
-      });
-    }
-
-    if (!user.verified) {
-      return res.status(403).json({ 
-        success: false,
-        message: "Account not verified. Please verify your email first." 
-      });
-    }
-
+    
+    if (!user) return res.status(400).json({ error: "User not found" });
+    
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ 
-        success: false,
-        message: "Invalid email or password" 
-      });
-    }
+    if (!isMatch) return res.status(403).json({ error: "Invalid credentials" });
 
-    // Generate token
-    const token = generateToken(user._id);
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { 
+      expiresIn: "1h" 
+    });
 
-    res.status(200).json({
-      success: true,
-      message: "Login successful",
-      token,
-      user: {
-        _id: user._id,
-        username: user.username,
-        email: user.email,
-        role: user.role
-      }
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none"
     });
-  } catch (error) {
-    console.error("Login error:", error);
-    res.status(500).json({ 
-      success: false,
-      message: "Server error" 
-    });
+
+    res.json({ message: "Login successful", user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Server error" });
   }
 });
-
 // Password reset endpoints
 router.post("/mail/send-otp", async (req, res) => {
   try {

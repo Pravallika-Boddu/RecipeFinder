@@ -22,8 +22,17 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/login", formData, { withCredentials: true });
-      setMessage(response.data.message);
+      const response = await axios.post(
+      "https://recipefinder-99mo.onrender.com/api/auth/login", 
+      formData, 
+      {
+        withCredentials: true,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    setMessage(response.data.message);
 
       if (response.data.success) {
         const userRole = response.data.user.role;
@@ -41,8 +50,16 @@ const Login = () => {
         }
       }
     } catch (error) {
-      setMessage(error.response?.data?.message || "Invalid credentials! Please try again.");
-    }
+        const errorMessage = error.response?.data?.message || 
+                            error.response?.data?.error || 
+                            "Login failed. Please check your credentials.";
+        setMessage(errorMessage);
+        
+        // Special case for unverified emails
+        if (error.response?.data?.message?.includes("not verified")) {
+          setMessage(`${errorMessage} Please verify your email first.`);
+        }
+      }
   };
 
   // Handle OTP request for reset password (now using email)
@@ -53,7 +70,7 @@ const Login = () => {
         return;
       }
 
-      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/mail/send-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/send-otp", {
         email: resetData.email,
         purpose: "reset-password"
       });
@@ -74,7 +91,7 @@ const Login = () => {
         return;
       }
 
-      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/mail/verify-otp", {
+      const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/verify-otp", {
         email: resetData.email,
         otp,
         newPassword: resetData.newPassword,

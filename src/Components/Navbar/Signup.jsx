@@ -68,14 +68,19 @@ const Signup = () => {
 
   try {
     setLoading(true);
-    const response = await axios.post("https://recipefinder-99mo.onrender.com/api/auth/verify-otp", {
-      username: formData.username,
-      email: formData.email,
-      mobileNumber: formData.mobileNumber,
-      password: formData.password,
-      role: formData.role,
-      otp: otp
-    });
+    const response = await axios.post(
+      "https://recipefinder-99mo.onrender.com/api/auth/verify-otp",
+      {
+        email: formData.email,
+        otp: otp,
+        userData: {  // Send user data in nested object
+          username: formData.username,
+          mobileNumber: formData.mobileNumber,
+          password: formData.password,
+          role: formData.role
+        }
+      }
+    );
 
     if (response.data.success) {
       alert(response.data.message || "Registration successful! Please login.");
